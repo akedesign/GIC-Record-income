@@ -5,15 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ระบบรับรายได้ (Income Tracker)</title>
     
-    <!-- โหลดฟอนต์ Prompt จาก Google Fonts (แบบปกติ) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- โหลด Tailwind CSS เพื่อความสวยงาม -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- ตั้งค่า Tailwind ให้ใช้ฟอนต์ Prompt เป็นหลัก -->
     <script>
         tailwind.config = {
             theme: {
@@ -26,10 +23,8 @@
         }
     </script>
 
-    <!-- โหลด React และ ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    <!-- โหลด Babel เพื่อแปลภาษา React ให้เบราว์เซอร์เข้าใจ -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-[#F9FAFB]">
@@ -42,37 +37,20 @@
 
         const { useState, useEffect, useMemo } = React;
 
-        // --- ตั้งค่าระบบหลังบ้าน (Firebase) ---
-        const getFirebaseConfig = () => {
-            try {
-                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                    return JSON.parse(__firebase_config);
-                }
-            } catch(e){}
-            
-            // นำ Config ที่ได้จาก Firebase ขั้นตอนที่ 2 มาวางแทนที่ตรงนี้ครับ (สำหรับเอาไปอัปโหลดลง GitHub)
-            return {
-                apiKey: "AIzaSyDct86QoO_rfjaHnUCzvoRnKXZcXvfA8VI",
-                authDomain: "income-tracker-app-ef5dd.firebaseapp.com",
-                projectId: "income-tracker-app-ef5dd",
-                storageBucket: "income-tracker-app-ef5dd.firebasestorage.app",
-                messagingSenderId: "7223288115",
-                appId: "1:7223288115:web:e1d3e6bf55dfab973e9e46",
-                measurementId: "G-G8E9KDFSQ4"
-            };
+        // --- ตั้งค่าระบบหลังบ้าน (Firebase) ของนาย ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDct86QoO_rfjaHnUCzvoRnKXZcXvfA8VI",
+            authDomain: "income-tracker-app-ef5dd.firebaseapp.com",
+            projectId: "income-tracker-app-ef5dd",
+            storageBucket: "income-tracker-app-ef5dd.firebasestorage.app",
+            messagingSenderId: "7223288115",
+            appId: "1:7223288115:web:e1d3e6bf55dfab973e9e46",
+            measurementId: "G-G8E9KDFSQ4"
         };
         
-        const firebaseConfig = getFirebaseConfig();
-        let app, auth, db;
-        
-        // ถ้าเปิดบน Server จะเชื่อมระบบหลังบ้าน
-        if (firebaseConfig.apiKey !== "local_test") {
-            app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-        }
-        
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
         function App() {
             const [user, setUser] = useState(null);
@@ -114,22 +92,11 @@
             // Real-time Clock State
             const [currentTime, setCurrentTime] = useState(new Date());
 
-            // 1. Auth Effect (ตรวจสอบการเข้าสู่ระบบ)
+            // 1. Auth Effect (ตรวจสอบการเข้าสู่ระบบแบบ Anonymous)
             useEffect(() => {
-                if (!auth) {
-                    // โหมดเปิดเล่นในคอมจำลองผู้ใช้ขึ้นมา
-                    setUser({ uid: 'local-test-user' });
-                    setLoading(false);
-                    return;
-                }
-
                 const initAuth = async () => {
                     try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
+                        await signInAnonymously(auth);
                     } catch (error) {
                         console.error("Auth Error:", error);
                     }
@@ -142,18 +109,13 @@
                 return () => unsubscribe();
             }, []);
 
-            // 2. Fetch Data Effect (ดึงข้อมูล)
+            // 2. Fetch Data Effect (ดึงข้อมูลจากแฟ้มกองกลางชื่อ 'transactions')
             useEffect(() => {
                 if (!user) return;
-                
-                if (!db) {
-                    // โหมดเปิดในคอม ไม่ต้องดึงข้อมูลจริงจากเน็ต
-                    setLoading(false);
-                    return;
-                }
-
                 setLoading(true);
-                const collectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
+                
+                // เปลี่ยนเป้าหมายการดึงข้อมูลมาที่ collection รวมชื่อ 'transactions'
+                const collectionRef = collection(db, 'transactions');
                 
                 const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({
@@ -184,10 +146,8 @@
 
                 transactions.forEach(t => {
                     const d = new Date(t.date);
-                    // คำนวณเฉพาะปีที่เลือก
                     if (d.getFullYear() === selectedYear) {
                         yearTotal += Number(t.amount);
-                        // กรองเฉพาะเดือนที่เลือก
                         if (d.getMonth() === selectedMonth) {
                             monthTotal += Number(t.amount);
                             monthTx.push(t);
@@ -195,7 +155,6 @@
                     }
                 });
 
-                // เรียงรายการล่าสุดขึ้นก่อน
                 monthTx.sort((a, b) => new Date(b.date) - new Date(a.date));
 
                 return { 
@@ -211,14 +170,13 @@
                 return transactions.filter(t => {
                     const d = new Date(t.date);
                     return d.getMonth() === checkSlipMonth && d.getFullYear() === checkSlipYear;
-                }).sort((a, b) => new Date(b.date) - new Date(a.date)); // เรียงรายการล่าสุดขึ้นก่อน
+                }).sort((a, b) => new Date(b.date) - new Date(a.date)); 
             }, [transactions, checkSlipMonth, checkSlipYear, hasSearchedSlip]);
 
             // 6. คำนวณข้อมูลสำหรับหน้า Customer (สรุปยอดตามลูกค้า)
             const customerSummary = useMemo(() => {
                 const summary = {};
                 transactions.forEach(t => {
-                    // ใช้ note เป็นชื่อลูกค้า ถ้าระบุเหมือนกันจะเอามารวมกัน
                     const customerName = (t.note || 'ลูกค้าทั่วไป').trim();
                     if (!summary[customerName]) {
                         summary[customerName] = {
@@ -230,12 +188,10 @@
                     }
                     summary[customerName].totalAmount += Number(t.amount);
                     summary[customerName].transactionCount += 1;
-                    // อัปเดตวันที่ล่าสุด
                     if (new Date(t.date) > new Date(summary[customerName].lastDate)) {
                         summary[customerName].lastDate = t.date;
                     }
                 });
-                // แปลงเป็น Array และเรียงจากยอดเงินรวมมากสุดไปน้อยสุด
                 return Object.values(summary).sort((a, b) => b.totalAmount - a.totalAmount); 
             }, [transactions]);
 
@@ -252,7 +208,7 @@
                 }
             };
 
-            // ฟังก์ชันบันทึกข้อมูล
+            // ฟังก์ชันบันทึกข้อมูล (บันทึกลงแฟ้มกองกลาง)
             const handleAddTransaction = async (e) => {
                 e.preventDefault();
                 if (!user || !amount || isNaN(amount) || amount <= 0) return;
@@ -265,20 +221,15 @@
                     slipImage: slipPreview,
                     hasSlip: !!slipPreview,
                     date: new Date().toISOString(),
-                    createdAt: new Date().toISOString()
+                    createdAt: new Date().toISOString(),
+                    createdBy: user.uid // แอบบันทึกรหัสคนสร้างไว้เผื่อใช้ตรวจสอบในอนาคต
                 };
 
                 try {
-                    if (db) {
-                        // บันทึกลง Server ของจริง
-                        const collectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
-                        await addDoc(collectionRef, newTransaction);
-                    } else {
-                        // โหมดเปิดในคอม (บันทึกจำลอง)
-                        setTransactions(prev => [{ id: Date.now().toString(), ...newTransaction }, ...prev]);
-                    }
+                    // เปลี่ยนให้บันทึกลง collection รวมที่ชื่อ 'transactions'
+                    const collectionRef = collection(db, 'transactions');
+                    await addDoc(collectionRef, newTransaction);
                     
-                    // ล้างฟอร์ม
                     setAmount('');
                     setNote('');
                     setSlipFile(null);
@@ -291,28 +242,23 @@
                 }
             };
 
-            // ฟังก์ชันลบข้อมูล
+            // ฟังก์ชันลบข้อมูล (ลบจากแฟ้มกองกลาง)
             const handleDelete = async (id) => {
                 if (!user) return;
                 try {
-                    if (db) {
-                        const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id);
-                        await deleteDoc(docRef);
-                    } else {
-                        // โหมดเปิดในคอม
-                        setTransactions(prev => prev.filter(t => t.id !== id));
-                    }
+                    // ลบจาก collection รวม
+                    const docRef = doc(db, 'transactions', id);
+                    await deleteDoc(docRef);
                 } catch (error) {
                     console.error("Error deleting:", error);
                 }
             };
 
-            // การเปลี่ยนหน้า
             const handleNavigate = (view) => {
                 setCurrentView(view);
                 setIsMobileMenuOpen(false);
                 if (view === 'check-slip') {
-                    setHasSearchedSlip(false); // รีเซ็ตสถานะการค้นหาเมื่อเข้ามาหน้า Check Slip ใหม่
+                    setHasSearchedSlip(false); 
                 }
             };
 
@@ -327,8 +273,6 @@
             // --- ส่วนแสดงผลหน้าตา Dashboard ---
             const renderDashboard = () => (
                 <div className="space-y-6">
-                    
-                    {/* วันที่และนาฬิกา Real-time */}
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-500 bg-white w-fit px-4 py-2.5 rounded-xl border border-gray-200 shadow-sm">
                         <svg className="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         <span>{currentTime.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
@@ -336,15 +280,12 @@
                         <span className="text-gray-700 font-bold">{currentTime.toLocaleTimeString('th-TH')} น.</span>
                     </div>
 
-                    {/* ชื่อหน้า Dashboard (ย้ายลงมาตรงนี้) */}
                     <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">DASHBOARD</h2>
 
-                    {/* กล่องสรุปยอด (สีพาสเทล) */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-orange-50/80 p-5 rounded-xl border border-orange-100 shadow-sm transition-all hover:shadow-md">
                             <div className="flex items-center gap-2 mb-2">
                                 <h3 className="text-sm font-medium text-orange-800">ยอดเงินเดือน {thaiMonths[selectedMonth]}</h3>
-                                <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             </div>
                             <div className="flex items-baseline gap-2">
                                 <span className="text-3xl font-bold text-orange-900">
@@ -356,7 +297,6 @@
                         <div className="bg-blue-50/80 p-5 rounded-xl border border-blue-100 shadow-sm transition-all hover:shadow-md">
                             <div className="flex items-center gap-2 mb-2">
                                 <h3 className="text-sm font-medium text-blue-800">ยอดเงินรวมปี {selectedYear + 543}</h3>
-                                <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             </div>
                             <div className="flex items-baseline gap-2">
                                 <span className="text-3xl font-bold text-blue-900">
@@ -378,7 +318,6 @@
                         </div>
                     </div>
 
-                    {/* ตารางรายการโอน */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
                         <div className="p-4 border-b border-gray-200 flex flex-wrap gap-3 items-center justify-between bg-white">
                             <div className="flex items-center gap-3 relative">
@@ -390,30 +329,19 @@
                                     ตัวกรอง
                                 </button>
 
-                                {/* Dropdown ตัวกรอง */}
                                 {isFilterOpen && (
                                     <>
-                                        {/* พื้นหลังคลิกเพื่อปิด Dropdown */}
                                         <div className="fixed inset-0 z-10" onClick={() => setIsFilterOpen(false)}></div>
-                                        
                                         <div className="absolute top-full mt-2 left-0 w-64 bg-white border border-gray-100 rounded-xl shadow-xl z-20 p-4 animate-fade-in-up">
                                             <div className="mb-4">
                                                 <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เลือกเดือน</label>
-                                                <select 
-                                                    value={selectedMonth} 
-                                                    onChange={e => setSelectedMonth(Number(e.target.value))} 
-                                                    className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white"
-                                                >
+                                                <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white">
                                                     {thaiMonths.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                                 </select>
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เลือกปี</label>
-                                                <select 
-                                                    value={selectedYear} 
-                                                    onChange={e => setSelectedYear(Number(e.target.value))} 
-                                                    className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white"
-                                                >
+                                                <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white">
                                                     {years.map(y => <option key={y} value={y}>{y + 543}</option>)}
                                                 </select>
                                             </div>
@@ -430,9 +358,7 @@
                             <table className="w-full text-left border-collapse min-w-[800px]">
                                 <thead>
                                     <tr className="bg-gray-50/50">
-                                        <th className="py-3 px-4 w-12 text-center border-b border-gray-200">
-                                            <input type="checkbox" className="rounded text-orange-500 focus:ring-orange-500 border-gray-300" disabled />
-                                        </th>
+                                        <th className="py-3 px-4 w-12 text-center border-b border-gray-200"></th>
                                         <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">รายละเอียดลูกค้า</th>
                                         <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">วันที่และเวลา</th>
                                         <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">จำนวนเงิน</th>
@@ -506,45 +432,30 @@
             const renderCheckSlip = () => (
                 <div className="space-y-6">
                     <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">CHECK SLIP</h2>
-                    
-                    {/* กล่องตัวกรอง (เลือกเดือน/ปี) */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                         <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
                             <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
                             ระบุเดือนและปีที่ต้องการตรวจสอบสลิป
                         </h3>
-                        
                         <div className="flex flex-wrap items-end gap-4">
                             <div className="w-full sm:w-auto flex-1 min-w-[150px]">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เลือกเดือน</label>
-                                <select 
-                                    value={checkSlipMonth} 
-                                    onChange={e => { setCheckSlipMonth(Number(e.target.value)); setHasSearchedSlip(false); }} 
-                                    className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white"
-                                >
+                                <select value={checkSlipMonth} onChange={e => { setCheckSlipMonth(Number(e.target.value)); setHasSearchedSlip(false); }} className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white">
                                     {thaiMonths.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                 </select>
                             </div>
                             <div className="w-full sm:w-auto flex-1 min-w-[150px]">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เลือกปี</label>
-                                <select 
-                                    value={checkSlipYear} 
-                                    onChange={e => { setCheckSlipYear(Number(e.target.value)); setHasSearchedSlip(false); }} 
-                                    className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white"
-                                >
+                                <select value={checkSlipYear} onChange={e => { setCheckSlipYear(Number(e.target.value)); setHasSearchedSlip(false); }} className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white">
                                     {years.map(y => <option key={y} value={y}>{y + 543}</option>)}
                                 </select>
                             </div>
-                            <button
-                                onClick={() => setHasSearchedSlip(true)}
-                                className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-8 rounded-lg transition-colors shadow-sm"
-                            >
+                            <button onClick={() => setHasSearchedSlip(true)} className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-8 rounded-lg transition-colors shadow-sm">
                                 ตกลง (OK)
                             </button>
                         </div>
                     </div>
 
-                    {/* ตารางรายการ (จะแสดงก็ต่อเมื่อกดปุ่ม "ตกลง" แล้ว) */}
                     {hasSearchedSlip && (
                         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col animate-fade-in-up">
                             <div className="p-4 border-b border-gray-200 bg-white">
@@ -552,7 +463,6 @@
                                     รายการโอนเงินลูกค้า ประจำเดือน{thaiMonths[checkSlipMonth]} {checkSlipYear + 543}
                                 </span>
                             </div>
-
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse min-w-[800px]">
                                     <thead>
@@ -586,10 +496,7 @@
                                                         </td>
                                                         <td className="py-3 px-4 text-center">
                                                             {t.hasSlip && t.slipImage ? (
-                                                                <button 
-                                                                    onClick={() => setViewingSlipImage(t.slipImage)}
-                                                                    className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-600 hover:bg-orange-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors mx-auto"
-                                                                >
+                                                                <button onClick={() => setViewingSlipImage(t.slipImage)} className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-600 hover:bg-orange-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors mx-auto">
                                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                                                                     ดูสลิป
                                                                 </button>
@@ -609,7 +516,7 @@
                 </div>
             );
 
-            // --- ส่วนแสดงผลหน้าตา Customer (ลูกค้า) ---
+            // --- ส่วนแสดงผลหน้าตา Customer ---
             const renderCustomer = () => (
                 <div className="space-y-6">
                     <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">CUSTOMER</h2>
@@ -714,7 +621,7 @@
                             >
                                 {currentView === 'check-slip' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-orange-500 rounded-r-full"></div>}
                                 <svg className={`w-5 h-5 ${currentView === 'check-slip' ? 'text-orange-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                Check Slip
+                                <span>Check Slip</span>
                             </button>
                             <button 
                                 onClick={() => handleNavigate('customer')}
@@ -738,7 +645,6 @@
                                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
                                 </button>
                                 
-                                {/* ช่องค้นหาถูกย้ายมาตรงนี้ */}
                                 <div className="hidden md:block relative w-full max-w-md">
                                     <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                                     <input type="text" placeholder="ค้นหา..." className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 transition-all focus:bg-white" readOnly />
