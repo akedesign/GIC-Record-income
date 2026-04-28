@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบรับรายได้ (Income Tracker)</title>
+    
+    <!-- โหลดฟอนต์ Prompt จาก Google Fonts (แบบปกติ) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- โหลด Tailwind CSS เพื่อความสวยงาม -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- ตั้งค่า Tailwind ให้ใช้ฟอนต์ Prompt เป็นหลัก -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- โหลด React และ ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <!-- โหลด Babel เพื่อแปลภาษา React ให้เบราว์เซอร์เข้าใจ -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-[#F9FAFB]">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+        const { useState, useEffect, useMemo } = React;
+
+        // --- ตั้งค่าระบบหลังบ้าน (Firebase) ---
+        const getFirebaseConfig = () => {
+            try {
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    return JSON.parse(__firebase_config);
+                }
+            } catch(e){}
+            return { apiKey: "local_test" }; // ใช้โหมดทดสอบถ้าเปิดในคอมธรรมดา
+        };
+        
+        const firebaseConfig = getFirebaseConfig();
+        let app, auth, db;
+        
+        // ถ้าเปิดบน Server จะเชื่อมระบบหลังบ้าน
+        if (firebaseConfig.apiKey !== "local_test") {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        }
+        
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [transactions, setTransactions] = useState([]);
+            const [loading, setLoading] = useState(true);
+            
+            // Navigation & Modal State
+            const [currentView, setCurrentView] = useState('dashboard');
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+            const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+            // Form State
+            const [amount, setAmount] = useState('');
+            const [note, setNote] = useState('');
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            
+            // Slip Upload State
+            const [slipFile, setSlipFile] = useState(null);
+            const [slipPreview, setSlipPreview] = useState(null);
+            const [viewingSlipImage, setViewingSlipImage] = useState(null);
+
+            // Real-time Clock State
+            const [currentTime, setCurrentTime] = useState(new Date());
+
+            // 1. Auth Effect (ตรวจสอบการเข้าสู่ระบบ)
+            useEffect(() => {
+                if (!auth) {
+                    // โหมดเปิดเล่นในคอมจำลองผู้ใช้ขึ้นมา
+                    setUser({ uid: 'local-test-user' });
+                    setLoading(false);
+                    return;
+                }
+
+                const initAuth = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (error) {
+                        console.error("Auth Error:", error);
+                    }
+                };
+                initAuth();
+
+                const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+                    setUser(currentUser);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            // 2. Fetch Data Effect (ดึงข้อมูล)
+            useEffect(() => {
+                if (!user) return;
+                
+                if (!db) {
+                    // โหมดเปิดในคอม ไม่ต้องดึงข้อมูลจริงจากเน็ต
+                    setLoading(false);
+                    return;
+                }
+
+                setLoading(true);
+                const collectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
+                
+                const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    setTransactions(data);
+                    setLoading(false);
+                }, (error) => {
+                    console.error("Firestore Error:", error);
+                    setLoading(false);
+                });
+
+                return () => unsubscribe();
+            }, [user]);
+
+            // 3. Clock Effect (นาฬิกาเดินแบบเรียลไทม์)
+            useEffect(() => {
+                const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
+
+            // 4. คำนวณยอดรวมรายเดือนและรายปี
+            const { currentMonthTransactions, currentMonthTotal, currentYearTotal } = useMemo(() => {
+                const now = new Date();
+                const currentMonth = now.getMonth();
+                const currentYear = now.getFullYear();
+
+                let monthTotal = 0;
+                let yearTotal = 0;
+                const monthTx = [];
+
+                transactions.forEach(t => {
+                    const d = new Date(t.date);
+                    if (d.getFullYear() === currentYear) {
+                        yearTotal += Number(t.amount);
+                        if (d.getMonth() === currentMonth) {
+                            monthTotal += Number(t.amount);
+                            monthTx.push(t);
+                        }
+                    }
+                });
+
+                // เรียงรายการล่าสุดขึ้นก่อน
+                monthTx.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                return { 
+                    currentMonthTransactions: monthTx, 
+                    currentMonthTotal: monthTotal, 
+                    currentYearTotal: yearTotal 
+                };
+            }, [transactions]);
+
+            // ฟังก์ชันเลือกรูปสลิป
+            const handleFileChange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    setSlipFile(file);
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setSlipPreview(reader.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            // ฟังก์ชันบันทึกข้อมูล
+            const handleAddTransaction = async (e) => {
+                e.preventDefault();
+                if (!user || !amount || isNaN(amount) || amount <= 0) return;
+
+                setIsSubmitting(true);
+                
+                const newTransaction = {
+                    amount: Number(amount),
+                    note: note || 'รับเงินโอน',
+                    slipImage: slipPreview,
+                    hasSlip: !!slipPreview,
+                    date: new Date().toISOString(),
+                    createdAt: new Date().toISOString()
+                };
+
+                try {
+                    if (db) {
+                        // บันทึกลง Server ของจริง
+                        const collectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
+                        await addDoc(collectionRef, newTransaction);
+                    } else {
+                        // โหมดเปิดในคอม (บันทึกจำลอง)
+                        setTransactions(prev => [{ id: Date.now().toString(), ...newTransaction }, ...prev]);
+                    }
+                    
+                    // ล้างฟอร์ม
+                    setAmount('');
+                    setNote('');
+                    setSlipFile(null);
+                    setSlipPreview(null);
+                    setIsAddModalOpen(false);
+                } catch (error) {
+                    console.error("Error adding transaction:", error);
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            // ฟังก์ชันลบข้อมูล
+            const handleDelete = async (id) => {
+                if (!user) return;
+                try {
+                    if (db) {
+                        const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id);
+                        await deleteDoc(docRef);
+                    } else {
+                        // โหมดเปิดในคอม
+                        setTransactions(prev => prev.filter(t => t.id !== id));
+                    }
+                } catch (error) {
+                    console.error("Error deleting:", error);
+                }
+            };
+
+            if (!user || loading) {
+                return (
+                    <div className="flex items-center justify-center min-h-screen bg-[#F9FAFB]">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-orange-500"></div>
+                    </div>
+                );
+            }
+
+            // --- ส่วนแสดงผลหน้าตา Dashboard ---
+            const renderDashboard = () => (
+                <div className="space-y-6">
+                    
+                    {/* วันที่และนาฬิกา Real-time */}
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-500 bg-white w-fit px-4 py-2.5 rounded-xl border border-gray-200 shadow-sm">
+                        <svg className="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span>{currentTime.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                        <span className="mx-1 text-gray-300">|</span>
+                        <span className="text-gray-700 font-bold">{currentTime.toLocaleTimeString('th-TH')} น.</span>
+                    </div>
+
+                    {/* ชื่อหน้า Dashboard (ย้ายลงมาตรงนี้) */}
+                    <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">DASHBOARD</h2>
+
+                    {/* กล่องสรุปยอด (สีพาสเทล) */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-orange-50/80 p-5 rounded-xl border border-orange-100 shadow-sm transition-all hover:shadow-md">
+                            <div className="flex items-center gap-2 mb-2">
+                                <h3 className="text-sm font-medium text-orange-800">ยอดเงินเดือนนี้</h3>
+                                <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-3xl font-bold text-orange-900">
+                                    ฿{currentMonthTotal.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                            <p className="text-xs text-orange-600 mt-2">อัปเดตล่าสุดวันนี้</p>
+                        </div>
+
+                        <div className="bg-blue-50/80 p-5 rounded-xl border border-blue-100 shadow-sm transition-all hover:shadow-md">
+                            <div className="flex items-center gap-2 mb-2">
+                                <h3 className="text-sm font-medium text-blue-800">ยอดเงินรวมปีนี้</h3>
+                                <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-3xl font-bold text-blue-900">
+                                    ฿{currentYearTotal.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                            <p className="text-xs text-blue-600 mt-2">ตั้งแต่ 1 มกราคม เป็นต้นมา</p>
+                        </div>
+
+                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm transition-all hover:shadow-md">
+                            <div className="flex items-center gap-2 mb-2">
+                                <h3 className="text-sm font-medium text-gray-500">จำนวนรายการเดือนนี้</h3>
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-3xl font-bold text-gray-900">
+                                    {currentMonthTransactions.length}
+                                </span>
+                                <span className="text-sm font-medium text-green-500 bg-green-50 px-2 py-0.5 rounded-full">รายการ</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ตารางรายการโอน */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-gray-200 flex flex-wrap gap-3 items-center justify-between bg-white">
+                            <div className="flex items-center gap-3">
+                                <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                                    ตัวกรอง
+                                </button>
+                                <div className="h-4 w-px bg-gray-300"></div>
+                                <span className="text-sm text-gray-500 font-medium">รายการโอนเงินล่าสุด</span>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[800px]">
+                                <thead>
+                                    <tr className="bg-gray-50/50">
+                                        <th className="py-3 px-4 w-12 text-center border-b border-gray-200">
+                                            <input type="checkbox" className="rounded text-orange-500 focus:ring-orange-500 border-gray-300" disabled />
+                                        </th>
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">รายละเอียดลูกค้า</th>
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">วันที่และเวลา</th>
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">จำนวนเงิน</th>
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">สถานะ</th>
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-right">จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {currentMonthTransactions.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="6" className="py-12 text-center text-gray-400">
+                                                <svg className="w-8 h-8 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                                ยังไม่มีรายการในเดือนนี้
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        currentMonthTransactions.map((t) => {
+                                            const dateObj = new Date(t.date);
+                                            return (
+                                                <tr key={t.id} className="hover:bg-gray-50/80 transition-colors group">
+                                                    <td className="py-3 px-4 text-center">
+                                                        <input type="checkbox" className="rounded text-orange-500 focus:ring-orange-500 border-gray-300" />
+                                                    </td>
+                                                    <td className="py-3 px-4">
+                                                        <div className="font-medium text-gray-900 flex items-center gap-2">
+                                                            {t.note}
+                                                            {t.hasSlip && t.slipImage && (
+                                                                <button 
+                                                                    onClick={() => setViewingSlipImage(t.slipImage)}
+                                                                    className="text-orange-500 hover:text-orange-600 focus:outline-none transition-transform hover:scale-110 flex items-center justify-center p-1 rounded-full hover:bg-orange-50"
+                                                                    title="คลิกเพื่อดูสลิป"
+                                                                >
+                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-sm">
+                                                        <span className="text-orange-500 font-medium">{dateObj.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })}</span> <br/>
+                                                        <span className="text-xs text-blue-500 font-medium">{dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
+                                                    </td>
+                                                    <td className="py-3 px-4 font-semibold text-gray-900">
+                                                        ฿{t.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="py-3 px-4">
+                                                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700">
+                                                            รับยอดแล้ว
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-right">
+                                                        <button 
+                                                            onClick={() => handleDelete(t.id)}
+                                                            className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            title="ลบรายการ"
+                                                        >
+                                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderCheckSlip = () => (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800 uppercase tracking-wide">Check Slip</h2>
+                    <div className="flex flex-col items-center justify-center h-[600px] bg-white rounded-xl border border-gray-200">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-800">ระบบตรวจสอบสลิป</h2>
+                        <p className="text-gray-500 mt-2 text-sm">อัปโหลดรูปภาพสลิปเพื่อตรวจสอบข้อมูลอัตโนมัติ (Coming Soon)</p>
+                    </div>
+                </div>
+            );
+
+            const renderReports = () => (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800 uppercase tracking-wide">Reports</h2>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                        <h2 className="text-lg font-bold text-gray-900 mb-4">ประวัติรายการทั้งหมด</h2>
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-500">มีข้อมูลทั้งหมด {transactions.length} รายการในระบบ</p>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="flex h-screen bg-[#F9FAFB] text-gray-800 font-sans overflow-hidden">
+                    
+                    {/* เมนูด้านข้าง (Sidebar) */}
+                    {isMobileMenuOpen && (
+                        <div 
+                            className="fixed inset-0 bg-gray-900/20 z-20 md:hidden backdrop-blur-sm transition-opacity"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                        />
+                    )}
+
+                    <aside className={`fixed md:static inset-y-0 left-0 w-64 bg-white border-r border-gray-200 z-30 transform transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col`}>
+                        <div className="h-24 flex items-center px-6 border-b border-gray-200">
+                            <img src="logo small.png" alt="GIC Logo" className="h-[72px] w-auto object-contain" />
+                        </div>
+
+                        <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
+                            <div className="px-3 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Main Menu</div>
+                            <button 
+                                onClick={() => { setCurrentView('dashboard'); setIsMobileMenuOpen(false); }}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all relative ${currentView === 'dashboard' ? 'text-orange-500 font-bold bg-orange-50/50' : 'text-orange-400 hover:bg-orange-50 hover:text-orange-500 font-medium'}`}
+                            >
+                                {currentView === 'dashboard' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-orange-500 rounded-r-full"></div>}
+                                <svg className={`w-5 h-5 ${currentView === 'dashboard' ? 'text-orange-500' : 'text-orange-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                                <span className="uppercase">DASHBOARD</span>
+                            </button>
+                            <button 
+                                onClick={() => { setCurrentView('check-slip'); setIsMobileMenuOpen(false); }}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all relative ${currentView === 'check-slip' ? 'text-gray-900 font-semibold bg-orange-50/50' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 font-medium'}`}
+                            >
+                                {currentView === 'check-slip' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-orange-500 rounded-r-full"></div>}
+                                <svg className={`w-5 h-5 ${currentView === 'check-slip' ? 'text-orange-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                Check Slip
+                            </button>
+                        </nav>
+                    </aside>
+
+                    {/* พื้นที่หลัก */}
+                    <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                        <header className="bg-white border-b border-gray-200 h-24 px-4 md:px-8 flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-4 flex-1">
+                                <button 
+                                    onClick={() => setIsMobileMenuOpen(true)} 
+                                    className="md:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg focus:outline-none"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                                </button>
+                                
+                                {/* ช่องค้นหาถูกย้ายมาตรงนี้ */}
+                                <div className="hidden md:block relative w-full max-w-md">
+                                    <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                    <input type="text" placeholder="ค้นหา..." className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 transition-all focus:bg-white" readOnly />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={() => setIsAddModalOpen(true)}
+                                    className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                    บันทึกรายการใหม่
+                                </button>
+                            </div>
+                        </header>
+
+                        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+                            {currentView === 'dashboard' && renderDashboard()}
+                            {currentView === 'check-slip' && renderCheckSlip()}
+                            {currentView === 'reports' && renderReports()}
+                        </main>
+                    </div>
+
+                    {/* หน้าต่าง (Modal) เพิ่มรายการ */}
+                    {isAddModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up">
+                                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                    <h3 className="text-lg font-bold text-gray-900">เพิ่มรายการรับเงิน</h3>
+                                    <button 
+                                        onClick={() => setIsAddModalOpen(false)}
+                                        className="text-gray-400 hover:text-gray-600 p-1"
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </div>
+                                <form onSubmit={handleAddTransaction} className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท) *</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            required
+                                            className="w-full text-lg p-2.5 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-all outline-none"
+                                            placeholder="0.00"
+                                            value={amount}
+                                            onChange={(e) => setAmount(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียด / ชื่อลูกค้า</label>
+                                        <input
+                                            type="text"
+                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-all outline-none"
+                                            placeholder="เช่น ค่าสินค้า ก."
+                                            value={note}
+                                            onChange={(e) => setNote(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">สลิปโอนเงิน (ไม่บังคับ)</label>
+                                        {slipPreview ? (
+                                            <div className="relative w-full h-32 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center group">
+                                                <img src={slipPreview} alt="Slip preview" className="max-h-full max-w-full object-contain" />
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setSlipFile(null); setSlipPreview(null); }}
+                                                        className="bg-white text-red-500 p-2 rounded-full hover:bg-red-50 shadow-sm transition-transform transform hover:scale-110"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <label className="w-full flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-orange-50 hover:border-orange-300 transition-colors">
+                                                <svg className="w-6 h-6 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                                <span className="text-sm text-gray-500 font-medium">คลิกเพื่อแนบรูปสลิป</span>
+                                                <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                                            </label>
+                                        )}
+                                    </div>
+
+                                    <div className="pt-2 flex gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsAddModalOpen(false);
+                                                setSlipFile(null);
+                                                setSlipPreview(null);
+                                            }}
+                                            className="flex-1 bg-white border border-gray-300 text-gray-700 font-medium py-2.5 px-4 rounded-lg hover:bg-gray-50 transition-colors"
+                                        >
+                                            ยกเลิก
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={isSubmitting || !amount}
+                                            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-4 rounded-lg transition-colors disabled:bg-orange-300 disabled:cursor-not-allowed"
+                                        >
+                                            {isSubmitting ? 'กำลังบันทึก...' : 'บันทึก'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Pop-up ดูรูปสลิป */}
+                    {viewingSlipImage && (
+                        <div 
+                            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-sm animate-fade-in-up"
+                            onClick={() => setViewingSlipImage(null)}
+                        >
+                            <div 
+                                className="relative max-w-2xl max-h-[90vh] w-full flex flex-col items-center justify-center" 
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <button
+                                    onClick={() => setViewingSlipImage(null)}
+                                    className="absolute -top-12 right-0 md:-right-10 text-white hover:text-gray-300 p-2 focus:outline-none transition-transform hover:scale-110"
+                                    title="ปิดรูปภาพ"
+                                >
+                                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                                <img 
+                                    src={viewingSlipImage} 
+                                    alt="สลิปโอนเงิน" 
+                                    className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border-4 border-white/10" 
+                                />
+                            </div>
+                        </div>
+                    )}
+                    
+                    <style dangerouslySetInnerHTML={{__html: `
+                        @keyframes fadeInUp {
+                            from { opacity: 0; transform: translateY(10px); }
+                            to { opacity: 1; transform: translateY(0); }
+                        }
+                        .animate-fade-in-up {
+                            animation: fadeInUp 0.2s ease-out forwards;
+                        }
+                    `}} />
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
