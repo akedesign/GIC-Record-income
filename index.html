@@ -49,7 +49,16 @@
                     return JSON.parse(__firebase_config);
                 }
             } catch(e){}
-            return { apiKey: "local_test" }; // ใช้โหมดทดสอบถ้าเปิดในคอมธรรมดา
+            
+            // นำ Config ที่ได้จาก Firebase ขั้นตอนที่ 2 มาวางแทนที่ตรงนี้ครับ (สำหรับเอาไปอัปโหลดลง GitHub)
+            return {
+                apiKey: "AIzaSyXxxx_...", // เปลี่ยนเป็น apiKey ของนาย
+                authDomain: "income-tracker-xxx.firebaseapp.com", // เปลี่ยนเป็น authDomain ของนาย
+                projectId: "income-tracker-xxx", // เปลี่ยนเป็น projectId ของนาย
+                storageBucket: "income-tracker-xxx.firebasestorage.app", // เปลี่ยนเป็น storageBucket ของนาย
+                messagingSenderId: "123456789", // เปลี่ยนเป็น messagingSenderId ของนาย
+                appId: "1:123456789:web:abcdef..." // เปลี่ยนเป็น appId ของนาย
+            };
         };
         
         const firebaseConfig = getFirebaseConfig();
