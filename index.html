@@ -495,7 +495,7 @@
             // --- ส่วนแสดงผลหน้าตา Check Slip ---
             const renderCheckSlip = () => (
                 <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-orange-500 tracking-wide">Check Slip</h2>
+                    <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">CHECK SLIP</h2>
                     
                     {/* กล่องตัวกรอง (เลือกเดือน/ปี) */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
@@ -599,22 +599,10 @@
                 </div>
             );
 
-            const renderReports = () => (
-                <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-800 uppercase tracking-wide">Reports</h2>
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                        <h2 className="text-lg font-bold text-gray-900 mb-4">ประวัติรายการทั้งหมด</h2>
-                        <div className="space-y-4">
-                            <p className="text-sm text-gray-500">มีข้อมูลทั้งหมด {transactions.length} รายการในระบบ</p>
-                        </div>
-                    </div>
-                </div>
-            );
-
             // --- ส่วนแสดงผลหน้าตา Customer (ลูกค้า) ---
             const renderCustomer = () => (
                 <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-orange-500 tracking-wide">Customer</h2>
+                    <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">CUSTOMER</h2>
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col animate-fade-in-up">
                         <div className="p-4 border-b border-gray-200 bg-white">
                             <span className="text-sm text-gray-700 font-bold">
@@ -667,6 +655,18 @@
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderReports = () => (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">REPORTS</h2>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                        <h2 className="text-lg font-bold text-gray-900 mb-4">ประวัติรายการทั้งหมด</h2>
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-500">มีข้อมูลทั้งหมด {transactions.length} รายการในระบบ</p>
                         </div>
                     </div>
                 </div>
@@ -727,12 +727,12 @@
                                 >
                                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
                                 </button>
-                                <h1 className="text-xl font-bold text-gray-900 hidden md:block">
-                                    {currentView === 'dashboard' && <span className="text-orange-500 uppercase">DASHBOARD</span>}
-                                    {currentView === 'check-slip' && 'Check Slip'}
-                                    {currentView === 'customer' && <span className="text-orange-500 font-bold">Customer</span>}
-                                    {currentView === 'reports' && 'Reports'}
-                                </h1>
+                                
+                                {/* ช่องค้นหาถูกย้ายมาตรงนี้ */}
+                                <div className="hidden md:block relative w-full max-w-md">
+                                    <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                    <input type="text" placeholder="ค้นหา..." className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 transition-all focus:bg-white" readOnly />
+                                </div>
                             </div>
                             <div className="flex items-center gap-3">
                                 <button 
