@@ -84,6 +84,18 @@
             const [slipPreview, setSlipPreview] = useState(null);
             const [viewingSlipImage, setViewingSlipImage] = useState(null);
 
+            // Filter State (ตัวกรองเดือน/ปี)
+            const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+            const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+            const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+            // ตัวแปรค่าเดือนและปี
+            const thaiMonths = [
+                "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+                "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+            ];
+            const years = Array.from(new Array(5), (val, index) => new Date().getFullYear() - index);
+
             // Real-time Clock State
             const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -151,19 +163,17 @@
 
             // 4. คำนวณยอดรวมรายเดือนและรายปี
             const { currentMonthTransactions, currentMonthTotal, currentYearTotal } = useMemo(() => {
-                const now = new Date();
-                const currentMonth = now.getMonth();
-                const currentYear = now.getFullYear();
-
                 let monthTotal = 0;
                 let yearTotal = 0;
                 const monthTx = [];
 
                 transactions.forEach(t => {
                     const d = new Date(t.date);
-                    if (d.getFullYear() === currentYear) {
+                    // คำนวณเฉพาะปีที่เลือก
+                    if (d.getFullYear() === selectedYear) {
                         yearTotal += Number(t.amount);
-                        if (d.getMonth() === currentMonth) {
+                        // กรองเฉพาะเดือนที่เลือก
+                        if (d.getMonth() === selectedMonth) {
                             monthTotal += Number(t.amount);
                             monthTx.push(t);
                         }
@@ -178,7 +188,7 @@
                     currentMonthTotal: monthTotal, 
                     currentYearTotal: yearTotal 
                 };
-            }, [transactions]);
+            }, [transactions, selectedMonth, selectedYear]);
 
             // ฟังก์ชันเลือกรูปสลิป
             const handleFileChange = (e) => {
@@ -275,7 +285,7 @@
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-orange-50/80 p-5 rounded-xl border border-orange-100 shadow-sm transition-all hover:shadow-md">
                             <div className="flex items-center gap-2 mb-2">
-                                <h3 className="text-sm font-medium text-orange-800">ยอดเงินเดือนนี้</h3>
+                                <h3 className="text-sm font-medium text-orange-800">ยอดเงินเดือน {thaiMonths[selectedMonth]}</h3>
                                 <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             </div>
                             <div className="flex items-baseline gap-2">
@@ -283,12 +293,11 @@
                                     ฿{currentMonthTotal.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                 </span>
                             </div>
-                            <p className="text-xs text-orange-600 mt-2">อัปเดตล่าสุดวันนี้</p>
                         </div>
 
                         <div className="bg-blue-50/80 p-5 rounded-xl border border-blue-100 shadow-sm transition-all hover:shadow-md">
                             <div className="flex items-center gap-2 mb-2">
-                                <h3 className="text-sm font-medium text-blue-800">ยอดเงินรวมปีนี้</h3>
+                                <h3 className="text-sm font-medium text-blue-800">ยอดเงินรวมปี {selectedYear + 543}</h3>
                                 <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             </div>
                             <div className="flex items-baseline gap-2">
@@ -296,12 +305,11 @@
                                     ฿{currentYearTotal.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                 </span>
                             </div>
-                            <p className="text-xs text-blue-600 mt-2">ตั้งแต่ 1 มกราคม เป็นต้นมา</p>
                         </div>
 
                         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm transition-all hover:shadow-md">
                             <div className="flex items-center gap-2 mb-2">
-                                <h3 className="text-sm font-medium text-gray-500">จำนวนรายการเดือนนี้</h3>
+                                <h3 className="text-sm font-medium text-gray-500">จำนวนรายการเดือน {thaiMonths[selectedMonth]}</h3>
                             </div>
                             <div className="flex items-baseline gap-2">
                                 <span className="text-3xl font-bold text-gray-900">
@@ -315,13 +323,48 @@
                     {/* ตารางรายการโอน */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
                         <div className="p-4 border-b border-gray-200 flex flex-wrap gap-3 items-center justify-between bg-white">
-                            <div className="flex items-center gap-3">
-                                <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
+                            <div className="flex items-center gap-3 relative">
+                                <button 
+                                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                                    className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors border ${isFilterOpen ? 'bg-orange-50 text-orange-600 border-orange-200' : 'text-gray-700 bg-white border-gray-200 hover:bg-gray-50'}`}
+                                >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
                                     ตัวกรอง
                                 </button>
-                                <div className="h-4 w-px bg-gray-300"></div>
-                                <span className="text-sm text-gray-500 font-medium">รายการโอนเงินล่าสุด</span>
+
+                                {/* Dropdown ตัวกรอง */}
+                                {isFilterOpen && (
+                                    <>
+                                        {/* พื้นหลังคลิกเพื่อปิด Dropdown */}
+                                        <div className="fixed inset-0 z-10" onClick={() => setIsFilterOpen(false)}></div>
+                                        
+                                        <div className="absolute top-full mt-2 left-0 w-64 bg-white border border-gray-100 rounded-xl shadow-xl z-20 p-4 animate-fade-in-up">
+                                            <div className="mb-4">
+                                                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เลือกเดือน</label>
+                                                <select 
+                                                    value={selectedMonth} 
+                                                    onChange={e => setSelectedMonth(Number(e.target.value))} 
+                                                    className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white"
+                                                >
+                                                    {thaiMonths.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เลือกปี</label>
+                                                <select 
+                                                    value={selectedYear} 
+                                                    onChange={e => setSelectedYear(Number(e.target.value))} 
+                                                    className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white"
+                                                >
+                                                    {years.map(y => <option key={y} value={y}>{y + 543}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="h-4 w-px bg-gray-300 ml-2"></div>
+                                <span className="text-sm text-gray-500 font-medium ml-2">รายการโอนเงินล่าสุด</span>
                             </div>
                         </div>
 
