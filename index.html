@@ -36,7 +36,7 @@
     <script type="text/babel" data-type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, setDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
         const { useState, useEffect, useMemo } = React;
 
@@ -55,7 +55,6 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // กำหนด Email Admin
         const ADMIN_EMAIL = "akedesign@swittek.com";
 
         function App() {
@@ -64,29 +63,24 @@
             const [transactions, setTransactions] = useState([]);
             const [loading, setLoading] = useState(true);
             
-            // ตรวจสอบสิทธิ์ Admin (Case-insensitive)
             const isAdmin = useMemo(() => 
                 user && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase(), 
             [user]);
 
-            // UI States
             const [currentView, setCurrentView] = useState('dashboard');
             const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
             const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-            // Auth/Login States
             const [loginEmail, setLoginEmail] = useState('');
             const [loginPassword, setLoginPassword] = useState('');
             const [showPassword, setShowPassword] = useState(false);
             const [authError, setAuthError] = useState('');
 
-            // Sign Up States
             const [isSignUpOpen, setIsSignUpOpen] = useState(false);
             const [signUpEmail, setSignUpEmail] = useState('');
             const [signUpPassword, setSignUpPassword] = useState('');
             const [isSigningUp, setIsSigningUp] = useState(false);
 
-            // Form States
             const [amount, setAmount] = useState('');
             const [note, setNote] = useState('');
             const [isSubmitting, setIsSubmitting] = useState(false);
@@ -94,19 +88,25 @@
             const [slipPreview, setSlipPreview] = useState(null);
             const [viewingSlipImage, setViewingSlipImage] = useState(null);
 
-            // Filter States
+            const [editingTransaction, setEditingTransaction] = useState(null);
+            const [editSlipPreview, setEditSlipPreview] = useState(null);
+            const [isUpdatingSlip, setIsUpdatingSlip] = useState(false);
+
             const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
             const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
             const [isFilterOpen, setIsFilterOpen] = useState(false);
             const [checkSlipMonth, setCheckSlipMonth] = useState(new Date().getMonth());
             const [checkSlipYear, setCheckSlipYear] = useState(new Date().getFullYear());
             const [hasSearchedSlip, setHasSearchedSlip] = useState(false);
+
+            // Search States
+            const [searchTerm, setSearchTerm] = useState('');
+            const [selectedCustomerDetail, setSelectedCustomerDetail] = useState(null);
             
             const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
             const years = Array.from(new Array(5), (val, index) => new Date().getFullYear() - index);
             const [currentTime, setCurrentTime] = useState(new Date());
 
-            // 1. ตรวจสอบการเข้าสู่ระบบ
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
                     setUser(currentUser);
@@ -115,7 +115,6 @@
                 return () => unsubscribe();
             }, []);
 
-            // 2. ดึงข้อมูล (แฟ้มกองกลาง)
             useEffect(() => {
                 if (!user) return;
                 setLoading(true);
@@ -136,7 +135,6 @@
                 return () => clearInterval(timer);
             }, []);
 
-            // Handlers
             const handleLogin = async (e) => {
                 e.preventDefault();
                 setAuthError('');
@@ -182,10 +180,22 @@
             const handleNavigate = (view) => {
                 setCurrentView(view);
                 setIsMobileMenuOpen(false);
+                setSearchTerm('');
                 if (view === 'check-slip') setHasSearchedSlip(false);
             };
 
-            // Business Logic
+            const customerSummary = useMemo(() => {
+                const summary = {};
+                transactions.forEach(t => {
+                    const name = (t.note || 'ลูกค้าทั่วไป').trim();
+                    if (!summary[name]) summary[name] = { name, total: 0, count: 0, last: t.date };
+                    summary[name].total += Number(t.amount);
+                    summary[name].count += 1;
+                    if (new Date(t.date) > new Date(summary[name].last)) summary[name].last = t.date;
+                });
+                return Object.values(summary).sort((a, b) => b.total - a.total);
+            }, [transactions]);
+
             const { currentMonthTransactions, currentMonthTotal, currentYearTotal } = useMemo(() => {
                 let monthTotal = 0, yearTotal = 0, monthTx = [];
                 transactions.forEach(t => {
@@ -201,18 +211,6 @@
                 monthTx.sort((a, b) => new Date(b.date) - new Date(a.date));
                 return { currentMonthTransactions: monthTx, currentMonthTotal: monthTotal, currentYearTotal: yearTotal };
             }, [transactions, selectedMonth, selectedYear]);
-
-            const customerSummary = useMemo(() => {
-                const summary = {};
-                transactions.forEach(t => {
-                    const name = (t.note || 'ลูกค้าทั่วไป').trim();
-                    if (!summary[name]) summary[name] = { name, total: 0, count: 0, last: t.date };
-                    summary[name].total += Number(t.amount);
-                    summary[name].count += 1;
-                    if (new Date(t.date) > new Date(summary[name].last)) summary[name].last = t.date;
-                });
-                return Object.values(summary).sort((a, b) => b.total - a.total);
-            }, [transactions]);
 
             const filteredCheckSlips = useMemo(() => {
                 return transactions.filter(t => {
@@ -240,10 +238,39 @@
                 finally { setIsSubmitting(false); }
             };
 
+            const handleUpdateSlip = async (e) => {
+                e.preventDefault();
+                if (!editingTransaction || !editSlipPreview) return;
+                setIsUpdatingSlip(true);
+                try {
+                    await updateDoc(doc(db, 'transactions', editingTransaction.id), { slipImage: editSlipPreview, hasSlip: true });
+                    setEditingTransaction(null); setEditSlipPreview(null);
+                } catch (e) { console.error(e); } finally { setIsUpdatingSlip(false); }
+            };
+
             const handleDelete = async (id) => {
                 if (!isAdmin) return;
                 try { await deleteDoc(doc(db, 'transactions', id)); } catch (e) { console.error(e); }
             };
+
+            // Search Handlers
+            const filteredSearchCustomers = useMemo(() => {
+                if (!searchTerm.trim()) return [];
+                return customerSummary.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 5);
+            }, [searchTerm, customerSummary]);
+
+            const goToCustomerDetail = (custName) => {
+                setSelectedCustomerDetail(custName);
+                setCurrentView('customer-detail');
+                setSearchTerm('');
+            };
+
+            const customerTransactions = useMemo(() => {
+                if (!selectedCustomerDetail) return [];
+                return transactions
+                    .filter(t => (t.note || 'ลูกค้าทั่วไป').trim() === selectedCustomerDetail)
+                    .sort((a, b) => new Date(b.date) - new Date(a.date));
+            }, [transactions, selectedCustomerDetail]);
 
             if (isCheckingAuth) {
                 return (
@@ -258,41 +285,18 @@
                 return (
                     <div className="min-h-screen flex items-center justify-center bg-white p-6 font-sans">
                         <div className="w-full max-w-sm space-y-8 animate-fade-in-up">
-                            <div className="text-left space-y-2">
-                                <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Welcome back</h2>
-                                <p className="text-gray-500 text-sm">Welcome back! Please enter your details.</p>
-                            </div>
+                            <div className="text-left space-y-2"><h2 className="text-3xl font-bold text-gray-900 tracking-tight">Welcome back</h2><p className="text-gray-500 text-sm">Welcome back! Please enter your details.</p></div>
                             <form onSubmit={handleLogin} className="space-y-6">
                                 {authError && <div className="bg-red-50 text-red-600 text-xs p-3 rounded-lg border border-red-100">{authError}</div>}
-                                <div className="space-y-1.5">
-                                    <label className="block text-sm font-medium text-gray-700">Email</label>
-                                    <input type="email" required placeholder="Janedoe@mail.com" className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 outline-none" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} />
-                                </div>
-                                <div className="space-y-1.5 relative">
-                                    <label className="block text-sm font-medium text-gray-700">Password</label>
-                                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl outline-none" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} />
-                                    <button type="button" onClick={()=>setShowPassword(!showPassword)} className="absolute right-4 top-[38px] text-gray-400">
-                                        {showPassword ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"/></svg>}
-                                    </button>
-                                </div>
+                                <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Email</label><input type="email" required placeholder="Janedoe@mail.com" className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 outline-none" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} /></div>
+                                <div className="space-y-1.5 relative"><label className="block text-sm font-medium text-gray-700">Password</label><input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl outline-none" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} /><button type="button" onClick={()=>setShowPassword(!showPassword)} className="absolute right-4 top-[38px] text-gray-400">{showPassword ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"/></svg>}</button></div>
                                 <button type="submit" className="w-full bg-[#111827] text-white py-3 rounded-xl font-semibold shadow-lg hover:bg-black transition-all">Sign in</button>
-                                <button type="button" onClick={handleGoogleLogin} className="w-full bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition-all">
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#EA4335" d="M12.48 10.92v3.28h7.84c-.24 1.84-.908 3.152-1.928 4.176-1.288 1.288-3.312 2.704-7.392 2.704-6.624 0-11.776-5.376-11.776-12s5.152-12 11.776-12c3.584 0 6.208 1.416 8.448 3.52l2.32-2.32c-2.304-2.192-5.328-3.52-10.768-3.52-8.592 0-15.68 7.088-15.68 15.68s7.088 15.68 15.68 15.68c4.64 0 8.448-1.52 11.232-4.52 2.896-3.088 3.696-7.392 3.696-10.768 0-1.04-.08-2.016-.24-2.92h-14.672z"/></svg> Sign in with Google
-                                </button>
-                                <p className="text-center text-sm text-gray-500">
-                                    Don't have an account? <button type="button" onClick={()=>setIsSignUpOpen(true)} className="text-orange-600 font-bold hover:underline">Sign up for free</button>
-                                </p>
+                                <button type="button" onClick={handleGoogleLogin} className="w-full bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition-all"><svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#EA4335" d="M12.48 10.92v3.28h7.84c-.24 1.84-.908 3.152-1.928 4.176-1.288 1.288-3.312 2.704-7.392 2.704-6.624 0-11.776-5.376-11.776-12s5.152-12 11.776-12c3.584 0 6.208 1.416 8.448 3.52l2.32-2.32c-2.304-2.192-5.328-3.52-10.768-3.52-8.592 0-15.68 7.088-15.68 15.68s7.088 15.68 15.68 15.68c4.64 0 8.448-1.52 11.232-4.52 2.896-3.088 3.696-7.392 3.696-10.768 0-1.04-.08-2.016-.24-2.92h-14.672z"/></svg> Sign in with Google</button>
+                                <p className="text-center text-sm text-gray-500">Don't have an account? <button type="button" onClick={()=>setIsSignUpOpen(true)} className="text-orange-600 font-bold hover:underline">Sign up for free</button></p>
                             </form>
                             {isSignUpOpen && (
                                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in-up">
-                                    <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-8 space-y-6">
-                                        <div className="flex justify-between items-center"><h3 className="text-2xl font-bold">Sign Up</h3><button onClick={()=>setIsSignUpOpen(false)}><svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>
-                                        <form onSubmit={handleSignUp} className="space-y-5">
-                                            <input type="email" required placeholder="Email Address" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={signUpEmail} onChange={e=>setSignUpEmail(e.target.value)} />
-                                            <input type="password" required minLength="6" placeholder="Password (min 6 chars)" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={signUpPassword} onChange={e=>setSignUpPassword(e.target.value)} />
-                                            <button disabled={isSigningUp} type="submit" className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold shadow-lg disabled:bg-orange-300">{isSigningUp ? 'กำลังสมัคร...' : 'Sign Up'}</button>
-                                        </form>
-                                    </div>
+                                    <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-8 space-y-6"><div className="flex justify-between items-center"><h3 className="text-2xl font-bold">Sign Up</h3><button onClick={()=>setIsSignUpOpen(false)} className="text-gray-400"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div><form onSubmit={handleSignUp} className="space-y-5"><input type="email" required placeholder="Email Address" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={signUpEmail} onChange={e=>setSignUpEmail(e.target.value)} /><input type="password" required minLength="6" placeholder="Password (min 6 chars)" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={signUpPassword} onChange={e=>setSignUpPassword(e.target.value)} /><button disabled={isSigningUp} type="submit" className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold shadow-lg disabled:bg-orange-300">{isSigningUp ? 'กำลังสมัคร...' : 'Sign Up'}</button></form></div>
                                 </div>
                             )}
                         </div>
@@ -309,40 +313,50 @@
                         <span className="text-gray-700 font-bold">{currentTime.toLocaleTimeString('th-TH')} น.</span>
                     </div>
                     <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">DASHBOARD</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-sans">
-                        <div className="bg-orange-50/80 p-5 rounded-xl border border-orange-100 shadow-sm">
-                            <h3 className="text-sm font-medium text-orange-800 mb-2">ยอดเงินเดือน {thaiMonths[selectedMonth]}</h3>
-                            <span className="text-3xl font-bold text-orange-900">฿{currentMonthTotal.toLocaleString()}</span>
-                        </div>
-                        <div className="bg-blue-50/80 p-5 rounded-xl border border-blue-100 shadow-sm">
-                            <h3 className="text-sm font-medium text-blue-800 mb-2">ยอดเงินรวมปี {selectedYear + 543}</h3>
-                            <span className="text-3xl font-bold text-blue-900">฿{currentYearTotal.toLocaleString()}</span>
-                        </div>
-                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm font-sans">
-                            <h3 className="text-sm font-medium text-gray-500 mb-2">รายการเดือนนี้</h3>
-                            <span className="text-3xl font-bold text-gray-900">{currentMonthTransactions.length}</span>
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-orange-50/80 p-5 rounded-xl border border-orange-100 shadow-sm"><h3 className="text-sm font-medium text-orange-800 mb-2">ยอดเงินเดือน {thaiMonths[selectedMonth]}</h3><span className="text-3xl font-bold text-orange-900">฿{currentMonthTotal.toLocaleString()}</span></div>
+                        <div className="bg-blue-50/80 p-5 rounded-xl border border-blue-100 shadow-sm"><h3 className="text-sm font-medium text-blue-800 mb-2">ยอดเงินรวมปี {selectedYear + 543}</h3><span className="text-3xl font-bold text-blue-900">฿{currentYearTotal.toLocaleString()}</span></div>
+                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm"><h3 className="text-sm font-medium text-gray-500 mb-2">รายการเดือนนี้</h3><span className="text-3xl font-bold text-gray-900">{currentMonthTransactions.length}</span></div>
                     </div>
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
-                        <table className="w-full text-left min-w-[800px]">
-                            <thead className="bg-gray-50/50"><tr className="text-xs text-gray-500 uppercase font-bold"><th className="p-4">รายละเอียด</th><th className="p-4 text-center">วันที่/เวลา</th><th className="p-4 text-right">จำนวนเงิน</th><th className="p-4 text-right">จัดการ</th></tr></thead>
+                        <table className="w-full text-left min-w-[850px]">
+                            <thead className="bg-gray-50/50"><tr className="text-xs text-gray-500 uppercase font-bold"><th className="p-4">รายละเอียด</th><th className="p-4 text-center">วันที่/เวลา</th><th className="p-4 text-right">จำนวนเงิน</th><th className="p-4 text-right">แก้ไข</th><th className="p-4 text-right">จัดการ</th></tr></thead>
                             <tbody className="divide-y divide-gray-100">
                                 {currentMonthTransactions.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50/50 group transition-colors">
-                                        <td className="p-4 font-medium flex items-center gap-2">
-                                            {t.note}
-                                            {t.hasSlip && <button onClick={()=>setViewingSlipImage(t.slipImage)} className="text-orange-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M4 16l4.586-4.586a2 2.001 0 012.828 0L16 16m-2-2l1.586-1.586a2 2.001 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></button>}
-                                        </td>
-                                        <td className="p-4 text-sm text-center">
-                                            <span className="text-orange-500 font-bold">{new Date(t.date).toLocaleDateString('th-TH')}</span> <br/>
-                                            <span className="text-xs text-blue-500 font-bold">{new Date(t.date).toLocaleTimeString('th-TH')} น.</span>
-                                        </td>
-                                        <td className="p-4 text-right font-bold text-gray-900 font-sans">฿{t.amount.toLocaleString()}</td>
-                                        <td className="p-4 text-right">
-                                            {isAdmin && <button onClick={()=>handleDelete(t.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth={1.5}/></svg></button>}
-                                        </td>
+                                        <td className="p-4 font-medium flex items-center gap-2">{t.note} {t.hasSlip && <button onClick={()=>setViewingSlipImage(t.slipImage)} className="text-orange-500 hover:scale-110 transition-transform"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M4 16l4.586-4.586a2.001 2.001 0 012.828 0L16 16m-2-2l1.586-1.586a2.001 2.001 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></button>}</td>
+                                        <td className="p-4 text-sm text-center"><span className="text-orange-500 font-bold">{new Date(t.date).toLocaleDateString('th-TH')}</span> <br/><span className="text-xs text-blue-500 font-bold">{new Date(t.date).toLocaleTimeString('th-TH')} น.</span></td>
+                                        <td className="p-4 text-right font-bold text-gray-900">฿{t.amount.toLocaleString()}</td>
+                                        <td className="p-4 text-right">{isAdmin && <button onClick={()=>{setEditingTransaction(t); setEditSlipPreview(t.slipImage);}} className="text-gray-400 hover:text-orange-500 p-1"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>}</td>
+                                        <td className="p-4 text-right">{isAdmin && <button onClick={()=>handleDelete(t.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeWidth={1.5}/></svg></button>}</td>
                                     </tr>
                                 ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+
+            const renderCustomerDetail = () => (
+                <div className="space-y-6 animate-fade-in-up">
+                    <button onClick={() => setCurrentView('dashboard')} className="text-sm font-bold text-gray-400 flex items-center gap-2 hover:text-orange-500 transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg> กลับหน้าหลัก
+                    </button>
+                    <h2 className="text-4xl font-black text-orange-500 uppercase tracking-widest leading-none">{selectedCustomerDetail}</h2>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden overflow-x-auto">
+                        <div className="p-4 border-b border-gray-100 bg-gray-50/30 text-xs font-bold text-gray-400 uppercase tracking-wider">ประวัติรายการทั้งหมด</div>
+                        <table className="w-full text-left min-w-[800px]">
+                            <thead className="bg-gray-50/50"><tr className="text-xs text-gray-500 uppercase font-bold"><th className="p-4">วันที่/เวลา</th><th className="p-4">รายละเอียด</th><th className="p-4 text-right">จำนวนเงิน</th><th className="p-4 text-center">สลิป</th></tr></thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {customerTransactions.map(t => (
+                                    <tr key={t.id} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="p-4 text-sm"><span className="text-orange-500 font-bold">{new Date(t.date).toLocaleDateString('th-TH')}</span> <br/><span className="text-xs text-blue-500 font-bold">{new Date(t.date).toLocaleTimeString('th-TH')} น.</span></td>
+                                        <td className="p-4 font-medium text-gray-900">{t.note}</td>
+                                        <td className="p-4 text-right font-bold text-gray-900">฿{t.amount.toLocaleString()}</td>
+                                        <td className="p-4 text-center">{t.hasSlip ? <button onClick={()=>setViewingSlipImage(t.slipImage)} className="text-orange-500 font-bold text-xs underline">ดูสลิป</button> : <span className="text-gray-300">-</span>}</td>
+                                    </tr>
+                                ))}
+                                {customerTransactions.length === 0 && <tr><td colSpan="4" className="p-12 text-center text-gray-400 italic">ไม่มีข้อมูลรายการ</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -364,17 +378,7 @@
                             <table className="w-full text-left min-w-[800px]">
                                 <thead className="bg-gray-50/50"><tr className="text-xs uppercase text-gray-400 font-bold"><th className="p-4">ลูกค้า</th><th className="p-4 text-center">เวลา</th><th className="p-4 text-right">ยอดเงิน</th><th className="p-4 text-center">สลิป</th></tr></thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredCheckSlips.length === 0 ? <tr><td colSpan="4" className="p-8 text-center text-gray-400">ไม่พบข้อมูลในเดือนที่เลือก</td></tr> : filteredCheckSlips.map(t=>(
-                                        <tr key={t.id} className="hover:bg-gray-50/50">
-                                            <td className="p-4 font-medium">{t.note}</td>
-                                            <td className="p-4 text-sm text-center">
-                                                <span className="text-orange-500 font-bold">{new Date(t.date).toLocaleDateString('th-TH')}</span> <br/>
-                                                <span className="text-xs text-blue-500 font-bold">{new Date(t.date).toLocaleTimeString('th-TH')} น.</span>
-                                            </td>
-                                            <td className="p-4 font-bold text-right">฿{t.amount.toLocaleString()}</td>
-                                            <td className="p-4 text-center">{t.hasSlip ? <button onClick={()=>setViewingSlipImage(t.slipImage)} className="text-orange-500 font-bold text-xs underline">ดูสลิป</button> : <span className="text-gray-300">-</span>}</td>
-                                        </tr>
-                                    ))}
+                                    {filteredCheckSlips.map(t=>(<tr key={t.id} className="hover:bg-gray-50/50"><td className="p-4 font-medium">{t.note}</td><td className="p-4 text-sm text-center"><span className="text-orange-500 font-bold">{new Date(t.date).toLocaleDateString('th-TH')}</span> <br/><span className="text-xs text-blue-500 font-bold">{new Date(t.date).toLocaleTimeString('th-TH')} น.</span></td><td className="p-4 font-bold text-right">฿{t.amount.toLocaleString()}</td><td className="p-4 text-center">{t.hasSlip ? <button onClick={()=>setViewingSlipImage(t.slipImage)} className="text-orange-500 font-bold text-xs underline">ดูสลิป</button> : <span className="text-gray-300">-</span>}</td></tr>))}
                                 </tbody>
                             </table>
                         </div>
@@ -389,17 +393,7 @@
                         <table className="w-full text-left min-w-[800px]">
                             <thead className="bg-gray-50/50 text-xs text-gray-400 uppercase font-bold"><tr><th className="p-4">ชื่อลูกค้า</th><th className="p-4 text-center">จำนวนครั้ง</th><th className="p-4 text-right">ยอดรวม</th><th className="p-4 text-center">ล่าสุด</th></tr></thead>
                             <tbody className="divide-y divide-gray-100">
-                                {customerSummary.map((c,i)=>(
-                                    <tr key={i} className="hover:bg-gray-50/50">
-                                        <td className="p-4 font-medium flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold uppercase">{c.name.charAt(0)}</div>
-                                            {c.name}
-                                        </td>
-                                        <td className="p-4 text-center font-bold text-gray-600">{c.count}</td>
-                                        <td className="p-4 text-right font-bold text-orange-600">฿{c.total.toLocaleString()}</td>
-                                        <td className="p-4 text-center text-xs text-gray-400">{new Date(c.last).toLocaleDateString('th-TH')}</td>
-                                    </tr>
-                                ))}
+                                {customerSummary.map((c,i)=>(<tr key={i} className="hover:bg-gray-50/50 cursor-pointer group" onClick={() => goToCustomerDetail(c.name)}><td className="p-4 font-medium flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold uppercase">{c.name.charAt(0)}</div>{c.name}</td><td className="p-4 text-center font-bold text-gray-600">{c.count}</td><td className="p-4 text-right font-bold text-orange-600 group-hover:underline">฿{c.total.toLocaleString()}</td><td className="p-4 text-center text-xs text-gray-400">{new Date(c.last).toLocaleDateString('th-TH')}</td></tr>))}
                             </tbody>
                         </table>
                     </div>
@@ -411,21 +405,16 @@
                     <h2 className="text-2xl font-bold text-orange-500 uppercase tracking-wide">SETTING</h2>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                         <button className="aspect-square bg-white border border-gray-200 rounded-3xl shadow-sm hover:shadow-xl hover:border-orange-500 hover:-translate-y-1 transition-all flex flex-col items-center justify-center gap-4 group">
-                            <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center group-hover:bg-orange-500 group-hover:text-white transition-colors">
-                                <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                            </div>
-                            <div className="text-center">
-                                <p className="font-bold text-gray-800 text-lg">User</p>
-                                <p className="text-xs text-gray-400">ผู้ใช้งาน</p>
-                            </div>
+                            <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center group-hover:bg-orange-500 group-hover:text-white transition-colors"><svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg></div>
+                            <div className="text-center"><p className="font-bold text-gray-800 text-lg">User</p><p className="text-xs text-gray-400">ผู้ใช้งาน</p></div>
                         </button>
                     </div>
                 </div>
             );
 
-            // --- Layout Rendering ---
             const renderContent = () => {
                 if (currentView === 'dashboard') return renderDashboard();
+                if (currentView === 'customer-detail') return renderCustomerDetail();
                 if (isAdmin) {
                     if (currentView === 'check-slip') return renderCheckSlip();
                     if (currentView === 'customer') return renderCustomer();
@@ -437,35 +426,12 @@
             return (
                 <div className="flex h-screen bg-[#F9FAFB] text-gray-800 font-sans overflow-hidden">
                     <aside className={`fixed md:static inset-y-0 left-0 w-64 bg-white border-r border-gray-200 z-30 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col`}>
-                        <div className="h-24 flex items-center px-6 border-b border-gray-200 shrink-0">
-                            <img src="logo small.png" alt="Logo" className="h-[72px] w-auto object-contain" />
-                        </div>
+                        <div className="h-24 flex items-center px-6 border-b border-gray-200 shrink-0"><img src="logo small.png" alt="Logo" className="h-[72px] w-auto object-contain" /></div>
                         <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
-                            <div className="px-3 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Main Menu</div>
-                            <button onClick={()=>handleNavigate('dashboard')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'dashboard' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}>
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6z"/></svg>
-                                <span className="uppercase">DASHBOARD</span>
-                            </button>
-                            {isAdmin && (
-                                <>
-                                    <button onClick={()=>handleNavigate('check-slip')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'check-slip' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}>
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                                        <span className="uppercase">CHECK SLIP</span>
-                                    </button>
-                                    <button onClick={()=>handleNavigate('customer')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'customer' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}>
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                                        <span>Customer</span>
-                                    </button>
-                                    <button onClick={()=>handleNavigate('setting')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'setting' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}>
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                        <span>Setting</span>
-                                    </button>
-                                </>
-                            )}
-                            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all mt-auto border-t pt-4">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-                                <span>Logout</span>
-                            </button>
+                            <div className="px-3 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">Main Menu</div>
+                            <button onClick={()=>handleNavigate('dashboard')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'dashboard' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6z"/></svg><span className="uppercase">DASHBOARD</span></button>
+                            {isAdmin && (<><button onClick={()=>handleNavigate('check-slip')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'check-slip' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span className="uppercase">CHECK SLIP</span></button><button onClick={()=>handleNavigate('customer')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'customer' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg><span>Customer</span></button><button onClick={()=>handleNavigate('setting')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'setting' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg><span>Setting</span></button></>)}
+                            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all mt-auto border-t pt-4"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg><span>Logout</span></button>
                         </nav>
                     </aside>
 
@@ -474,29 +440,35 @@
                             <div className="flex items-center gap-4 flex-1">
                                 <button onClick={()=>setIsMobileMenuOpen(true)} className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg shrink-0"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
                                 <div className="hidden md:block relative w-full max-w-md">
-                                    <input type="text" placeholder="ค้นหา..." className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500" />
+                                    <input type="text" placeholder="ค้นหาชื่อลูกค้า..." className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all" value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
                                     <svg className="w-4 h-4 text-gray-400 absolute left-3 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth={2}/></svg>
+                                    {/* Search Results Dropdown */}
+                                    {filteredSearchCustomers.length > 0 && (
+                                        <div className="absolute top-full mt-2 left-0 w-full bg-white border border-gray-100 rounded-xl shadow-2xl z-[100] py-2 animate-fade-in-up">
+                                            {filteredSearchCustomers.map((c, i) => (
+                                                <div key={i} onClick={() => goToCustomerDetail(c.name)} className="px-4 py-3 hover:bg-orange-50 cursor-pointer flex items-center justify-between group">
+                                                    <span className="font-bold text-gray-700 group-hover:text-orange-600">{c.name}</span>
+                                                    <span className="text-xs text-gray-400">คลิกเพื่อดูรายละเอียด</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            <button onClick={()=>setIsAddModalOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold py-2.5 px-5 rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-100 transition-all active:scale-95 shrink-0">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth={2.5}/></svg> บันทึกรายการใหม่
-                            </button>
+                            <button onClick={()=>setIsAddModalOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold py-2.5 px-5 rounded-2xl flex items-center gap-2 shadow-lg shadow-orange-100 transition-all active:scale-95 shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth={2.5}/></svg> บันทึกรายการใหม่</button>
                         </header>
-
-                        <main className="flex-1 overflow-y-auto p-4 md:p-8">
-                            {renderContent()}
-                        </main>
+                        <main className="flex-1 overflow-y-auto p-4 md:p-8">{renderContent()}</main>
                     </div>
 
-                    {/* Modals */}
+                    {/* Modals: Add, Edit, Viewing... */}
                     {isAddModalOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-fade-in-up">
                             <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-4">
-                                <div className="flex justify-between items-center"><h3 className="text-xl font-bold">เพิ่มรายการรับเงิน</h3><button onClick={()=>setIsAddModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>
+                                <div className="flex justify-between items-center"><h3 className="text-xl font-bold">เพิ่มรายการรับเงิน</h3><button onClick={()=>setIsAddModalOpen(false)} className="text-gray-400"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>
                                 <form onSubmit={handleAddTransaction} className="space-y-4">
-                                    <input type="number" step="0.01" required placeholder="จำนวนเงิน (บาท)" className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-sans font-bold text-lg" value={amount} onChange={e=>setAmount(e.target.value)} />
+                                    <input type="number" step="0.01" required placeholder="จำนวนเงิน (บาท)" className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20 font-bold text-lg" value={amount} onChange={e=>setAmount(e.target.value)} />
                                     <div className="relative">
-                                        <input type="text" placeholder="ชื่อลูกค้า/รายละเอียด" className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500" value={note} onChange={e=>{setNote(e.target.value); setShowSuggestions(true);}} onFocus={()=>setShowSuggestions(true)} onBlur={()=>setTimeout(()=>setShowSuggestions(false), 200)} />
+                                        <input type="text" placeholder="ชื่อลูกค้า/รายละเอียด" className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500/20" value={note} onChange={e=>{setNote(e.target.value); setShowSuggestions(true);}} onFocus={()=>setShowSuggestions(true)} onBlur={()=>setTimeout(()=>setShowSuggestions(false), 200)} />
                                         {showSuggestions && note && customerSummary.some(c=>c.name.includes(note)) && (
                                             <div className="absolute z-10 w-full mt-1 bg-white border border-gray-100 rounded-xl shadow-2xl max-h-48 overflow-y-auto py-2">
                                                 {customerSummary.filter(c=>c.name.includes(note)).map((c, i)=><div key={i} onClick={()=>{setNote(c.name); setShowSuggestions(false);}} className="px-4 py-2.5 hover:bg-orange-50 cursor-pointer text-sm">{c.name}</div>)}
@@ -507,21 +479,29 @@
                                         {slipPreview ? <img src={slipPreview} className="max-h-full rounded-lg" /> : <div className="text-center text-gray-400"><svg className="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg><span className="text-sm">คลิกเพื่อแนบรูปสลิป</span></div>}
                                         <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e=>{const f=e.target.files[0]; if(f){const r=new FileReader(); r.onload=()=>setSlipPreview(r.result); r.readAsDataURL(f);}}} />
                                     </div>
-                                    <button type="submit" disabled={isSubmitting} className="w-full bg-orange-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-orange-100 hover:bg-orange-600 active:scale-95 transition-all disabled:bg-orange-300">
-                                        {isSubmitting ? 'กำลังบันทึกข้อมูล...' : 'บันทึกรายการ'}
-                                    </button>
+                                    <button type="submit" disabled={isSubmitting} className="w-full bg-orange-500 text-white py-4 rounded-2xl font-bold shadow-lg disabled:bg-orange-300">{isSubmitting ? 'กำลังบันทึก...' : 'บันทึกรายการ'}</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {editingTransaction && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-fade-in-up">
+                            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-6">
+                                <div className="flex justify-between items-center"><div><h3 className="text-xl font-bold text-gray-900">แก้ไขสลิปโอนเงิน</h3><p className="text-xs text-gray-400 mt-1">ลูกค้า: {editingTransaction.note}</p></div><button onClick={()=>setEditingTransaction(null)} className="text-gray-400"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2}/></svg></button></div>
+                                <form onSubmit={handleUpdateSlip} className="space-y-6">
+                                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-orange-200 bg-orange-50/20 rounded-2xl p-4 cursor-pointer hover:bg-orange-50 relative h-64">
+                                        {editSlipPreview ? <div className="relative h-full w-full flex items-center justify-center"><img src={editSlipPreview} className="max-h-full rounded-lg shadow-md" /><div className="absolute top-2 right-2 bg-white rounded-full p-1 shadow-md text-orange-500"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg></div></div> : <div className="text-center text-gray-400"><svg className="w-12 h-12 mx-auto mb-3 opacity-50 text-orange-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg><span className="text-sm font-medium">คลิกเพื่ออัปโหลดสลิป</span></div>}
+                                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){const r=new FileReader(); r.onload=()=>setEditSlipPreview(r.result); r.readAsDataURL(f);}}} />
+                                    </div>
+                                    <div className="flex gap-3"><button type="button" onClick={()=>setEditingTransaction(null)} className="flex-1 py-3.5 border rounded-xl font-bold text-gray-500">ยกเลิก</button><button type="submit" disabled={isUpdatingSlip || !editSlipPreview} className="flex-[2] bg-orange-500 text-white py-3.5 rounded-xl font-bold shadow-lg disabled:bg-orange-300">{isUpdatingSlip ? 'กำลังอัปเดต...' : 'บันทึกสลิป'}</button></div>
                                 </form>
                             </div>
                         </div>
                     )}
 
                     {viewingSlipImage && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/90 backdrop-blur-md animate-fade-in-up" onClick={()=>setViewingSlipImage(null)}>
-                            <div className="relative max-w-3xl max-h-full">
-                                <img src={viewingSlipImage} className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl border-4 border-white/20" onClick={e=>e.stopPropagation()} />
-                                <button className="absolute -top-12 right-0 text-white hover:text-orange-500 transition-colors"><svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
-                            </div>
-                        </div>
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/90 backdrop-blur-md animate-fade-in-up" onClick={()=>setViewingSlipImage(null)}><div className="relative max-w-3xl max-h-full"><img src={viewingSlipImage} className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl border-4 border-white/20" onClick={e=>e.stopPropagation()} /><button className="absolute -top-12 right-0 text-white hover:text-orange-500"><svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div></div>
                     )}
 
                     <style dangerouslySetInnerHTML={{__html: `@keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in-up { animation: fadeInUp 0.25s ease-out forwards; }`}} />
