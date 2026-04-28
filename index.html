@@ -55,7 +55,8 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        const ADMIN_EMAIL = "akedesign@swittek.com";
+        // กำหนดรายการ Email Admin (รองรับหลายคน)
+        const ADMIN_LIST = ["akedesign@swittek.com", "admin"];
 
         function App() {
             const [user, setUser] = useState(null);
@@ -63,8 +64,9 @@
             const [transactions, setTransactions] = useState([]);
             const [loading, setLoading] = useState(true);
             
+            // ตรวจสอบสิทธิ์ Admin โดยเช็คจากรายการ ADMIN_LIST
             const isAdmin = useMemo(() => 
-                user && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase(), 
+                user && user.email && ADMIN_LIST.some(email => email.toLowerCase() === user.email.toLowerCase()), 
             [user]);
 
             const [currentView, setCurrentView] = useState('dashboard');
@@ -144,6 +146,8 @@
                 if (!isLoginFormValid) return;
                 setAuthError('');
                 try {
+                    // Firebase Auth มักต้องการรูปแบบ email หาก "admin" เฉพาะเจาะจงต้องจัดการใน Console
+                    // แต่ในที่นี้เราจะพยายาม login ตามที่ผู้ใช้กรอก
                     await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
                 } catch (error) {
                     setAuthError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
@@ -157,11 +161,16 @@
                 try {
                     const userCredential = await createUserWithEmailAndPassword(auth, signUpEmail, signUpPassword);
                     const newUser = userCredential.user;
+                    
+                    // บันทึกข้อมูลและเช็คสิทธิ์ admin อัตโนมัติจากรายชื่อ
+                    const userRole = ADMIN_LIST.some(email => email.toLowerCase() === signUpEmail.toLowerCase()) ? "admin" : "member";
+                    
                     await setDoc(doc(db, "users", newUser.uid), {
                         email: signUpEmail,
                         createdAt: new Date().toISOString(),
-                        role: signUpEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? "admin" : "member"
+                        role: userRole
                     });
+                    
                     setIsSignUpOpen(false);
                     setSignUpEmail('');
                     setSignUpPassword('');
@@ -295,7 +304,7 @@
                             </div>
                             <form onSubmit={handleLogin} className="space-y-6">
                                 {authError && <div className="bg-red-50 text-red-600 text-xs p-3 rounded-lg border border-red-100">{authError}</div>}
-                                <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Email</label><input type="email" required placeholder="Janedoe@mail.com" className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 outline-none transition-all" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} /></div>
+                                <div className="space-y-1.5"><label className="block text-sm font-medium text-gray-700">Email</label><input type="text" required placeholder="Janedoe@mail.com" className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 outline-none transition-all" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} /></div>
                                 <div className="space-y-1.5 relative">
                                     <label className="block text-sm font-medium text-gray-700">Password</label>
                                     <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="w-full px-4 py-2.5 bg-gray-50/50 border border-gray-200 rounded-xl outline-none transition-all" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} />
@@ -304,7 +313,6 @@
                                     </button>
                                 </div>
                                 
-                                {/* ปุ่ม Sign in ที่จะเปลี่ยนเป็นสีส้มเมื่อกรอกข้อมูลครบ */}
                                 <button 
                                     type="submit" 
                                     className={`w-full py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg active:scale-[0.98] ${isLoginFormValid ? 'bg-orange-500 text-white shadow-orange-100 hover:bg-orange-600' : 'bg-[#111827] text-white hover:bg-black'}`}
@@ -325,7 +333,7 @@
                                     <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-8 space-y-6">
                                         <div className="flex justify-between items-center"><h3 className="text-2xl font-bold">Sign Up</h3><button onClick={()=>setIsSignUpOpen(false)} className="text-gray-400"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>
                                         <form onSubmit={handleSignUp} className="space-y-5">
-                                            <input type="email" required placeholder="Email Address" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={signUpEmail} onChange={e=>setSignUpEmail(e.target.value)} />
+                                            <input type="text" required placeholder="Email Address / Username" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={signUpEmail} onChange={e=>setSignUpEmail(e.target.value)} />
                                             <input type="password" required minLength="6" placeholder="Password (min 6 chars)" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={signUpPassword} onChange={e=>setSignUpPassword(e.target.value)} />
                                             <button disabled={isSigningUp} type="submit" className="w-full bg-orange-500 text-white py-3.5 rounded-xl font-bold shadow-lg disabled:bg-orange-300">{isSigningUp ? 'กำลังสมัคร...' : 'Sign Up'}</button>
                                         </form>
@@ -462,7 +470,7 @@
                         <div className="h-24 flex items-center px-6 border-b border-gray-200 shrink-0"><img src="logo small.png" alt="Logo" className="h-[72px] w-auto object-contain" /></div>
                         <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
                             <div className="px-3 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">Main Menu</div>
-                            <button onClick={()=>handleNavigate('dashboard')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'dashboard' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6z"/></svg><span className="uppercase">DASHBOARD</span></button>
+                            <button onClick={()=>handleNavigate('dashboard')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'dashboard' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6z"/></svg><span className="uppercase">DASHBOARD</span></button>
                             {isAdmin && (<><button onClick={()=>handleNavigate('check-slip')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'check-slip' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span className="uppercase">CHECK SLIP</span></button><button onClick={()=>handleNavigate('customer')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'customer' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg><span>Customer</span></button><button onClick={()=>handleNavigate('setting')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${currentView === 'setting' ? 'text-orange-500 font-bold bg-orange-50' : 'text-gray-400'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg><span>Setting</span></button></>)}
                             <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all mt-auto border-t pt-4"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg><span>Logout</span></button>
                         </nav>
