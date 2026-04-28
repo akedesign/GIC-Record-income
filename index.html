@@ -84,10 +84,15 @@
             const [slipPreview, setSlipPreview] = useState(null);
             const [viewingSlipImage, setViewingSlipImage] = useState(null);
 
-            // Filter State (ตัวกรองเดือน/ปี)
+            // Dashboard Filter State
             const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
             const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
             const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+            // Check Slip Filter State
+            const [checkSlipMonth, setCheckSlipMonth] = useState(new Date().getMonth());
+            const [checkSlipYear, setCheckSlipYear] = useState(new Date().getFullYear());
+            const [hasSearchedSlip, setHasSearchedSlip] = useState(false);
 
             // ตัวแปรค่าเดือนและปี
             const thaiMonths = [
@@ -161,7 +166,7 @@
                 return () => clearInterval(timer);
             }, []);
 
-            // 4. คำนวณยอดรวมรายเดือนและรายปี
+            // 4. คำนวณยอดรวมรายเดือนและรายปี (สำหรับ Dashboard)
             const { currentMonthTransactions, currentMonthTotal, currentYearTotal } = useMemo(() => {
                 let monthTotal = 0;
                 let yearTotal = 0;
@@ -189,6 +194,40 @@
                     currentYearTotal: yearTotal 
                 };
             }, [transactions, selectedMonth, selectedYear]);
+
+            // 5. คำนวณข้อมูลสำหรับหน้า Check Slip
+            const filteredCheckSlips = useMemo(() => {
+                if (!hasSearchedSlip) return [];
+                return transactions.filter(t => {
+                    const d = new Date(t.date);
+                    return d.getMonth() === checkSlipMonth && d.getFullYear() === checkSlipYear;
+                }).sort((a, b) => new Date(b.date) - new Date(a.date)); // เรียงรายการล่าสุดขึ้นก่อน
+            }, [transactions, checkSlipMonth, checkSlipYear, hasSearchedSlip]);
+
+            // 6. คำนวณข้อมูลสำหรับหน้า Customer (สรุปยอดตามลูกค้า)
+            const customerSummary = useMemo(() => {
+                const summary = {};
+                transactions.forEach(t => {
+                    // ใช้ note เป็นชื่อลูกค้า ถ้าระบุเหมือนกันจะเอามารวมกัน
+                    const customerName = (t.note || 'ลูกค้าทั่วไป').trim();
+                    if (!summary[customerName]) {
+                        summary[customerName] = {
+                            name: customerName,
+                            totalAmount: 0,
+                            transactionCount: 0,
+                            lastDate: t.date
+                        };
+                    }
+                    summary[customerName].totalAmount += Number(t.amount);
+                    summary[customerName].transactionCount += 1;
+                    // อัปเดตวันที่ล่าสุด
+                    if (new Date(t.date) > new Date(summary[customerName].lastDate)) {
+                        summary[customerName].lastDate = t.date;
+                    }
+                });
+                // แปลงเป็น Array และเรียงจากยอดเงินรวมมากสุดไปน้อยสุด
+                return Object.values(summary).sort((a, b) => b.totalAmount - a.totalAmount); 
+            }, [transactions]);
 
             // ฟังก์ชันเลือกรูปสลิป
             const handleFileChange = (e) => {
@@ -255,6 +294,15 @@
                     }
                 } catch (error) {
                     console.error("Error deleting:", error);
+                }
+            };
+
+            // การเปลี่ยนหน้า
+            const handleNavigate = (view) => {
+                setCurrentView(view);
+                setIsMobileMenuOpen(false);
+                if (view === 'check-slip') {
+                    setHasSearchedSlip(false); // รีเซ็ตสถานะการค้นหาเมื่อเข้ามาหน้า Check Slip ใหม่
                 }
             };
 
@@ -444,16 +492,110 @@
                 </div>
             );
 
+            // --- ส่วนแสดงผลหน้าตา Check Slip ---
             const renderCheckSlip = () => (
                 <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-800 uppercase tracking-wide">Check Slip</h2>
-                    <div className="flex flex-col items-center justify-center h-[600px] bg-white rounded-xl border border-gray-200">
-                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                    <h2 className="text-2xl font-bold text-orange-500 tracking-wide">Check Slip</h2>
+                    
+                    {/* กล่องตัวกรอง (เลือกเดือน/ปี) */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                        <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                            ระบุเดือนและปีที่ต้องการตรวจสอบสลิป
+                        </h3>
+                        
+                        <div className="flex flex-wrap items-end gap-4">
+                            <div className="w-full sm:w-auto flex-1 min-w-[150px]">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เลือกเดือน</label>
+                                <select 
+                                    value={checkSlipMonth} 
+                                    onChange={e => { setCheckSlipMonth(Number(e.target.value)); setHasSearchedSlip(false); }} 
+                                    className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white"
+                                >
+                                    {thaiMonths.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                </select>
+                            </div>
+                            <div className="w-full sm:w-auto flex-1 min-w-[150px]">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">เลือกปี</label>
+                                <select 
+                                    value={checkSlipYear} 
+                                    onChange={e => { setCheckSlipYear(Number(e.target.value)); setHasSearchedSlip(false); }} 
+                                    className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:ring-1 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all cursor-pointer bg-gray-50 hover:bg-white"
+                                >
+                                    {years.map(y => <option key={y} value={y}>{y + 543}</option>)}
+                                </select>
+                            </div>
+                            <button
+                                onClick={() => setHasSearchedSlip(true)}
+                                className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 px-8 rounded-lg transition-colors shadow-sm"
+                            >
+                                ตกลง (OK)
+                            </button>
                         </div>
-                        <h2 className="text-xl font-bold text-gray-800">ระบบตรวจสอบสลิป</h2>
-                        <p className="text-gray-500 mt-2 text-sm">อัปโหลดรูปภาพสลิปเพื่อตรวจสอบข้อมูลอัตโนมัติ (Coming Soon)</p>
                     </div>
+
+                    {/* ตารางรายการ (จะแสดงก็ต่อเมื่อกดปุ่ม "ตกลง" แล้ว) */}
+                    {hasSearchedSlip && (
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col animate-fade-in-up">
+                            <div className="p-4 border-b border-gray-200 bg-white">
+                                <span className="text-sm text-gray-700 font-bold">
+                                    รายการโอนเงินลูกค้า ประจำเดือน{thaiMonths[checkSlipMonth]} {checkSlipYear + 543}
+                                </span>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse min-w-[800px]">
+                                    <thead>
+                                        <tr className="bg-gray-50/50">
+                                            <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">รายละเอียดลูกค้า</th>
+                                            <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">วันที่และเวลา</th>
+                                            <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">จำนวนเงิน</th>
+                                            <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center">สลิปแนบ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredCheckSlips.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="4" className="py-12 text-center text-gray-400">
+                                                    <svg className="w-8 h-8 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                                    ไม่พบรายการโอนเงินในเดือนนี้
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            filteredCheckSlips.map((t) => {
+                                                const dateObj = new Date(t.date);
+                                                return (
+                                                    <tr key={t.id} className="hover:bg-gray-50/80 transition-colors">
+                                                        <td className="py-3 px-4 font-medium text-gray-900">{t.note}</td>
+                                                        <td className="py-3 px-4 text-sm">
+                                                            <span className="text-orange-500 font-medium">{dateObj.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })}</span> <br/>
+                                                            <span className="text-xs text-blue-500 font-medium">{dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
+                                                        </td>
+                                                        <td className="py-3 px-4 font-semibold text-gray-900">
+                                                            ฿{t.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center">
+                                                            {t.hasSlip && t.slipImage ? (
+                                                                <button 
+                                                                    onClick={() => setViewingSlipImage(t.slipImage)}
+                                                                    className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-600 hover:bg-orange-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors mx-auto"
+                                                                >
+                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                                    ดูสลิป
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-xs text-gray-400">- ไม่มีสลิป -</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
 
@@ -464,6 +606,67 @@
                         <h2 className="text-lg font-bold text-gray-900 mb-4">ประวัติรายการทั้งหมด</h2>
                         <div className="space-y-4">
                             <p className="text-sm text-gray-500">มีข้อมูลทั้งหมด {transactions.length} รายการในระบบ</p>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            // --- ส่วนแสดงผลหน้าตา Customer (ลูกค้า) ---
+            const renderCustomer = () => (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-orange-500 tracking-wide">Customer</h2>
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col animate-fade-in-up">
+                        <div className="p-4 border-b border-gray-200 bg-white">
+                            <span className="text-sm text-gray-700 font-bold">
+                                สรุปยอดเงินรวมแยกลูกค้ารายบุคคล (ทั้งหมด {customerSummary.length} รายการ)
+                            </span>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[800px]">
+                                <thead>
+                                    <tr className="bg-gray-50/50">
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">ชื่อลูกค้า / รายละเอียด</th>
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center">จำนวนรายการโอน</th>
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-right">ยอดเงินรวมทั้งหมด</th>
+                                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center">ทำรายการล่าสุด</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {customerSummary.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="4" className="py-12 text-center text-gray-400">
+                                                <svg className="w-8 h-8 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                                ยังไม่มีข้อมูลลูกค้า
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        customerSummary.map((c, idx) => {
+                                            const lastDateObj = new Date(c.lastDate);
+                                            return (
+                                                <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
+                                                    <td className="py-3 px-4">
+                                                        <div className="font-medium text-gray-900 flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                                            </div>
+                                                            {c.name}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-center text-sm font-medium text-gray-600">
+                                                        {c.transactionCount} ครั้ง
+                                                    </td>
+                                                    <td className="py-3 px-4 font-bold text-orange-600 text-right">
+                                                        ฿{c.totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-sm text-gray-500 text-center">
+                                                        {lastDateObj.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -488,7 +691,7 @@
                         <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
                             <div className="px-3 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Main Menu</div>
                             <button 
-                                onClick={() => { setCurrentView('dashboard'); setIsMobileMenuOpen(false); }}
+                                onClick={() => handleNavigate('dashboard')}
                                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all relative ${currentView === 'dashboard' ? 'text-orange-500 font-bold bg-orange-50/50' : 'text-orange-400 hover:bg-orange-50 hover:text-orange-500 font-medium'}`}
                             >
                                 {currentView === 'dashboard' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-orange-500 rounded-r-full"></div>}
@@ -496,12 +699,20 @@
                                 <span className="uppercase">DASHBOARD</span>
                             </button>
                             <button 
-                                onClick={() => { setCurrentView('check-slip'); setIsMobileMenuOpen(false); }}
+                                onClick={() => handleNavigate('check-slip')}
                                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all relative ${currentView === 'check-slip' ? 'text-gray-900 font-semibold bg-orange-50/50' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 font-medium'}`}
                             >
                                 {currentView === 'check-slip' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-orange-500 rounded-r-full"></div>}
                                 <svg className={`w-5 h-5 ${currentView === 'check-slip' ? 'text-orange-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                 Check Slip
+                            </button>
+                            <button 
+                                onClick={() => handleNavigate('customer')}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all relative ${currentView === 'customer' ? 'text-orange-500 font-bold bg-orange-50/50' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 font-medium'}`}
+                            >
+                                {currentView === 'customer' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-orange-500 rounded-r-full"></div>}
+                                <svg className={`w-5 h-5 ${currentView === 'customer' ? 'text-orange-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                <span>Customer</span>
                             </button>
                         </nav>
                     </aside>
@@ -516,12 +727,12 @@
                                 >
                                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
                                 </button>
-                                
-                                {/* ช่องค้นหาถูกย้ายมาตรงนี้ */}
-                                <div className="hidden md:block relative w-full max-w-md">
-                                    <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                                    <input type="text" placeholder="ค้นหา..." className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 transition-all focus:bg-white" readOnly />
-                                </div>
+                                <h1 className="text-xl font-bold text-gray-900 hidden md:block">
+                                    {currentView === 'dashboard' && <span className="text-orange-500 uppercase">DASHBOARD</span>}
+                                    {currentView === 'check-slip' && 'Check Slip'}
+                                    {currentView === 'customer' && <span className="text-orange-500 font-bold">Customer</span>}
+                                    {currentView === 'reports' && 'Reports'}
+                                </h1>
                             </div>
                             <div className="flex items-center gap-3">
                                 <button 
@@ -537,6 +748,7 @@
                         <main className="flex-1 overflow-y-auto p-4 md:p-8">
                             {currentView === 'dashboard' && renderDashboard()}
                             {currentView === 'check-slip' && renderCheckSlip()}
+                            {currentView === 'customer' && renderCustomer()}
                             {currentView === 'reports' && renderReports()}
                         </main>
                     </div>
